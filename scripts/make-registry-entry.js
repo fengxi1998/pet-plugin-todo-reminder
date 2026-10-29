@@ -58,10 +58,11 @@ const sha256 = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).dige
 const download = `https://github.com/${args.github}/${repoName}/releases/download/v${version}/plugin.zip`;
 
 // 登记表条目：字段语义见 registry/SCHEMA.md
+// 字段顺序与官方 registry/plugins.json 保持一致（description 在最后），
+// 便于维护者 review diff 时逐行对照。
 const entry = {
   id: manifest.id,
   name: manifest.name,
-  description: manifest.description,
   author: `github:${args.github}`,
   repo: `${args.github}/${repoName}`,
   version,
@@ -71,7 +72,8 @@ const entry = {
   sha256,
   permissions: manifest.permissions,
   nodeAccess: manifest.nodeAccess === true,
-  meshTier: null
+  meshTier: null,
+  description: manifest.description
 };
 
 fs.mkdirSync(args.out, { recursive: true });
@@ -90,6 +92,16 @@ const shaNote = args.fromRelease
   : '本 sha256 取自本地构建产物。**提交前必须用 CI 发布出的 Release 附件复算并替换**——'
     + '重新压缩或换文件后旧摘要作废。';
 
+const PERMISSION_USAGE = {
+  storage: '待办数据存在插件私有存储（plugins/todo-reminder/data.json），卸载随插件目录一并删除',
+  pet: '到点时让桌宠冒泡、播放动作，并设置宠物脚下的状态徽标',
+  ui: '打开与关闭插件面板（徽标点击 onClick: openPanel）',
+  events: '面板/卡片与常驻层之间同步数据变更；对外广播 todo-reminder:remind 事件',
+  scheduler: '每 30 秒巡检到期、每 10 分钟催办、每天 09:00 早间播报',
+  tools: '向宿主 Agent 注册 5 个待办管理工具（reminder_add/list/done/delete/snooze）',
+  dashboard: '在看板挂载本插件的卡片区块（entry.dashboardBlock）'
+};
+
 const prBody = [
   `标题：feat: add ${manifest.id} ${version}`,
   '',
@@ -107,9 +119,10 @@ const prBody = [
   '宿主版本为实际安装验证的版本，非推测值。',
   '',
   '权限及联网域名的用途：',
-  ...manifest.permissions.map((p) => `- \`${p}\`：见插件 README「申请的权限」一节的逐项说明`),
+  ...manifest.permissions.map((p) => `- \`${p}\`：${PERMISSION_USAGE[p] || '见插件 README「申请的权限」一节'}`),
   '',
   '本插件不联网，未申请任何 `net:<hostname>` 权限，也不使用 `secrets`。',
+  '未申请的能力包括：`clipboard`、`appearance`、`files`、`character:read`、`errands`、`net:*`。',
   '',
   '是否直接使用 Node 内建模块及原因：',
   `否。registry 条目标记 \`nodeAccess: ${manifest.nodeAccess === true}\`。`,
@@ -121,7 +134,8 @@ const prBody = [
   '- 停用：定时器销毁、徽标清空，无泄漏。',
   '- 重启：插件 activate 后恢复正常，重启不丢配置。',
   '- 卸载：插件私有数据随插件目录一并移除。',
-  '- 安装：ZIP 顶层为 manifest.json；已用宿主真实安装管线（sha256 → 解压 → manifest → 权限比对）验证通过。',
+  '- 安装：ZIP 顶层为 manifest.json；已用宿主真实安装管线（sha256 → 解压 → manifest → 权限比对）',
+  '  对 **CI 产出的 Release 附件** 复验通过。',
   '',
   '---',
   '',

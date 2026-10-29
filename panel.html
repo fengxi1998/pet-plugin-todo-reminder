@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>到点提醒</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --line: #dfe4ea;
+    --ink: #23272e;
+    --ink-muted: #6b7480;
+    --ink-faint: #97a0ab;
+    --accent: #3f6fa8;
+    --accent-hover: #35608f;
+    --accent-soft: #e8f0f8;
+    --success: #3f7a55;
+    --danger: #a8503f;
+    --danger-soft: #f7e9e5;
+    --warning: #9a6b28;
+    --warning-soft: #f6efdf;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.55;
+    overflow: hidden;
+  }
+
+  body { display: flex; flex-direction: column; }
+
+  button {
+    font: inherit;
+    color: inherit;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+  }
+  .icon-lg { width: 20px; height: 20px; }
+
+  /* ---- 标题栏 ---- */
+  .titlebar {
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px 0 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
+  }
+  .titlebar .mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+  .titlebar .who { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+  .titlebar .who b { font-size: 13px; font-weight: 600; }
+  .titlebar .who span { font-size: 11px; color: var(--ink-faint); }
+  .titlebar .spacer { flex: 1; }
+
+  .icon-btn {
+    -webkit-app-region: no-drag;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-muted);
+  }
+  .icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+
+  /* ---- 过滤页签 ---- */
+  .filters {
+    display: flex;
+    gap: 2px;
+    padding: 8px 12px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    color: var(--ink-muted);
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+  }
+  .filter:hover { color: var(--ink); background: var(--surface-2); }
+  .filter.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .filter .count {
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--ink-muted);
+    font-size: 11px;
+    line-height: 17px;
+    text-align: center;
+  }
+  .filter.active .count { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---- 内容区 ---- */
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+  .scroll::-webkit-scrollbar { width: 8px; }
+  .scroll::-webkit-scrollbar-thumb { background: #cfd6de; border-radius: 4px; border: 2px solid var(--bg); }
+
+  /* ---- 添加表单 ---- */
+  .add-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .add-row { display: flex; gap: 8px; }
+  .add-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+    outline: none;
+  }
+  .add-row input[type="text"]:focus { border-color: var(--accent); background: var(--surface); }
+  .add-sub { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .add-sub input[type="datetime-local"] {
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+  .add-sub input[type="datetime-local"]:focus { border-color: var(--accent); }
+  .add-sub .hint { color: var(--ink-faint); font-size: 11px; flex: 1; }
+
+  .btn {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 15px;
+    background: var(--accent);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn.big { height: 34px; border-radius: 17px; font-size: 13px; }
+  .btn.ghost { background: var(--surface-2); color: var(--ink); }
+  .btn.ghost:hover { background: var(--line); }
+  .btn.icon-only { width: 34px; padding: 0; justify-content: center; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  /* ---- 列表 ---- */
+  .todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .todo-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .todo-item.overdue { border-color: #e3c1b8; background: var(--danger-soft); }
+  .todo-item.soon { border-color: #e0d0ac; background: var(--warning-soft); }
+  .todo-item .check {
+    width: 17px;
+    height: 17px;
+    margin-top: 2px;
+    flex: none;
+    border: 1.5px solid var(--line);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    background: var(--surface);
+  }
+  .todo-item .check:hover { border-color: var(--accent); }
+  .todo-item.done .check { background: var(--success); border-color: var(--success); color: #fff; }
+  .todo-item .body { flex: 1; min-width: 0; }
+  .todo-item .body p { margin: 0; word-break: break-word; }
+  .todo-item.done .body p { color: var(--ink-faint); text-decoration: line-through; }
+  .todo-item .due { font-size: 11px; color: var(--warning); margin-top: 2px; }
+  .todo-item .due.past { color: var(--danger); font-weight: 600; }
+  .todo-item .ops { display: flex; gap: 2px; flex: none; }
+  .todo-item .icon-btn { width: 24px; height: 24px; }
+
+  .empty { color: var(--ink-faint); text-align: center; padding: 44px 16px; font-size: 12.5px; }
+  .empty .icon { width: 28px; height: 28px; stroke-width: 1.3; margin-bottom: 10px; opacity: .6; }
+
+  /* ---- 提示条 ---- */
+  .toast {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--ink);
+    color: #fff;
+    font-size: 12px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .18s ease, transform .18s ease;
+    pointer-events: none;
+    z-index: 9;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.err { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="mark">
+    <svg class="icon icon-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+  </div>
+  <div class="who">
+    <b>到点提醒</b>
+    <span id="subtitle">桌宠替你盯着时间</span>
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-close" class="icon-btn" title="关闭面板">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  </button>
+</header>
+
+<nav class="filters">
+  <button class="filter active" data-filter="pending">
+    待办 <span class="count" id="count-pending">0</span>
+  </button>
+  <button class="filter" data-filter="today">
+    今天 <span class="count" id="count-today">0</span>
+  </button>
+  <button class="filter" data-filter="done">
+    已完成 <span class="count" id="count-done">0</span>
+  </button>
+</nav>
+
+<div class="scroll">
+  <form class="add-card" id="add-form">
+    <div class="add-row">
+      <input id="add-input" type="text" maxlength="200" placeholder="要做的事…" autocomplete="off" />
+      <button class="btn big icon-only" type="submit" title="添加">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      </button>
+    </div>
+    <div class="add-sub">
+      <input id="add-due" type="datetime-local" />
+      <button class="btn ghost" type="button" id="btn-clear-due" title="清除时间">不限时</button>
+      <span class="hint">不选时间就只进清单，不提醒</span>
+    </div>
+  </form>
+
+  <ul class="todo-list" id="todo-list"></ul>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var TODO_KEY = 'todos';
+  var CHANGED_EVENT = 'todo-reminder:changed';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var todos = [];
+  var filter = 'pending';
+
+  // ---- 提示条 ----
+  var toastTimer = null;
+  function toast(message, isError) {
+    var el = $('toast');
+    el.textContent = message;
+    el.className = 'toast show' + (isError ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, 2600);
+  }
+
+  // ---- 数据 ----
+  function loadTodos() {
+    return pet.storage.get(TODO_KEY, []).then(function (raw) {
+      todos = Array.isArray(raw) ? raw.filter(function (t) { return t && typeof t.text === 'string'; }) : [];
+      render();
+    });
+  }
+
+  function saveTodos() {
+    return pet.storage.set(TODO_KEY, todos).then(function () {
+      render();
+      // 通知常驻层刷新徽标（徽标只有 tool 能设）。
+      return pet.events.emit(CHANGED_EVENT, { scope: 'todo' }).catch(function () {});
+    });
+  }
+
+  // ---- 展示 ----
+  function formatDue(due) {
+    var at = Date.parse(due);
+    if (Number.isNaN(at)) return '';
+    var d = new Date(at);
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    var now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    var clock = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    var base = sameDay ? '今天 ' + clock : (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + clock;
+    var delta = at - Date.now();
+    if (delta < -60000) {
+      var mins = Math.round(-delta / 60000);
+      return base + ' · 已逾期 ' + (mins >= 60 ? Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分' : mins + ' 分钟');
+    }
+    if (delta < 3600000) return base + ' · 还有 ' + Math.max(1, Math.round(delta / 60000)) + ' 分钟';
+    if (delta < 86400000) return base + ' · 还有 ' + Math.round(delta / 3600000) + ' 小时';
+    return base;
+  }
+
+  function visibleTodos() {
+    var now = Date.now();
+    var list;
+    if (filter === 'done') {
+      list = todos.filter(function (t) { return t.done; });
+    } else if (filter === 'today') {
+      list = todos.filter(function (t) {
+        if (t.done || !t.due) return false;
+        var d = new Date(Date.parse(t.due));
+        var n = new Date();
+        return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+      });
+    } else {
+      list = todos.filter(function (t) { return !t.done; });
+    }
+    // 有到期时间的在前、按时间升序；没时间的按创建时间倒序。
+    return list.slice().sort(function (a, b) {
+      var da = a.due ? Date.parse(a.due) : NaN;
+      var db = b.due ? Date.parse(b.due) : NaN;
+      if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+      if (!Number.isNaN(da)) return -1;
+      if (!Number.isNaN(db)) return 1;
+      return (b.ts || 0) - (a.ts || 0);
+    });
+  }
+
+  function render() {
+    var pending = todos.filter(function (t) { return !t.done; });
+    var done = todos.filter(function (t) { return t.done; });
+    var now = Date.now();
+    var today = pending.filter(function (t) {
+      if (!t.due) return false;
+      var d = new Date(Date.parse(t.due));
+      var n = new Date();
+      return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+    });
+    $('count-pending').textContent = String(pending.length);
+    $('count-today').textContent = String(today.length);
+    $('count-done').textContent = String(done.length);
+
+    var list = $('todo-list');
+    list.innerHTML = '';
+    var items = visibleTodos();
+
+    if (!items.length) {
+      var empty = document.createElement('li');
+      empty.className = 'empty';
+      empty.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>'
+        + '<div>' + (filter === 'done' ? '还没有完成过任何事' : filter === 'today' ? '今天没有到期安排' : '清单是空的。写下来，桌宠替你盯着') + '</div>';
+      list.appendChild(empty);
+      return;
+    }
+
+    items.forEach(function (item) {
+      var dueAt = item.due ? Date.parse(item.due) : NaN;
+      var isOverdue = !item.done && !Number.isNaN(dueAt) && dueAt < now;
+      var isSoon = !item.done && !Number.isNaN(dueAt) && dueAt >= now && dueAt - now < 3600000;
+
+      var li = document.createElement('li');
+      li.className = 'todo-item' + (item.done ? ' done' : '') + (isOverdue ? ' overdue' : isSoon ? ' soon' : '');
+
+      var check = document.createElement('button');
+      check.className = 'check';
+      check.title = item.done ? '标记为未完成' : '标记为已完成';
+      check.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+      check.addEventListener('click', function () {
+        item.done = !item.done;
+        item.doneAt = item.done ? Date.now() : 0;
+        if (item.done) { item.remindedAt = Date.now(); item.nagCount = 0; }
+        else { item.remindedAt = 0; item.nagCount = 0; }
+        saveTodos();
+      });
+
+      var body = document.createElement('div');
+      body.className = 'body';
+      var text = document.createElement('p');
+      text.textContent = item.text;
+      body.appendChild(text);
+      if (!item.done && item.due && !Number.isNaN(dueAt)) {
+        var dueEl = document.createElement('div');
+        dueEl.className = 'due' + (isOverdue ? ' past' : '');
+        dueEl.textContent = formatDue(item.due);
+        body.appendChild(dueEl);
+      }
+
+      var ops = document.createElement('div');
+      ops.className = 'ops';
+
+      if (!item.done && !Number.isNaN(dueAt)) {
+        var snooze = document.createElement('button');
+        snooze.className = 'icon-btn';
+        snooze.title = '推迟 5 分钟（并重新武装提醒）';
+        snooze.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>';
+        snooze.addEventListener('click', function () {
+          var base = dueAt > Date.now() ? dueAt : Date.now();
+          item.due = new Date(base + 5 * 60 * 1000).toISOString();
+          item.remindedAt = 0;
+          item.nagCount = 0;
+          saveTodos();
+          toast('已推迟 5 分钟');
+        });
+        ops.appendChild(snooze);
+      }
+
+      var del = document.createElement('button');
+      del.className = 'icon-btn';
+      del.title = '删除';
+      del.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      del.addEventListener('click', function () {
+        todos = todos.filter(function (t) { return t !== item; });
+        saveTodos();
+      });
+      ops.appendChild(del);
+
+      li.appendChild(check);
+      li.appendChild(body);
+      li.appendChild(ops);
+      list.appendChild(li);
+    });
+  }
+
+  // ---- 添加 ----
+  $('add-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var input = $('add-input');
+    var text = input.value.trim();
+    if (!text) return;
+
+    var due = '';
+    var dueRaw = $('add-due').value;
+    if (dueRaw) {
+      var at = Date.parse(dueRaw);
+      if (Number.isNaN(at)) { toast('时间没选对，已按不限时添加', true); }
+      else { due = new Date(at).toISOString(); }
+    }
+
+    todos.push({
+      id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      text: text,
+      done: false,
+      due: due,
+      remindedAt: 0,
+      nagCount: 0,
+      ts: Date.now()
+    });
+    input.value = '';
+    $('add-due').value = '';
+    saveTodos();
+    if (due) toast('已添加，到点桌宠会提醒你');
+    else toast('已添加（未设提醒时间）');
+  });
+
+  $('btn-clear-due').addEventListener('click', function () {
+    $('add-due').value = '';
+  });
+
+  // ---- 过滤页签 ----
+  Array.prototype.forEach.call(document.querySelectorAll('.filter'), function (tab) {
+    tab.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.filter'), function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      filter = tab.dataset.filter;
+      render();
+    });
+  });
+
+  // ---- 标题栏 ----
+  $('btn-close').addEventListener('click', function () {
+    pet.ui.closePanel();
+  });
+
+  // ---- 常驻层的提醒/徽标变更同步到面板 ----
+  if (pet.events && pet.events.on) {
+    pet.events.on(CHANGED_EVENT, function () {
+      loadTodos().catch(function () {});
+    });
+  }
+
+  // ---- 初始化 ----
+  loadTodos().catch(function (err) {
+    toast('初始化失败：' + String((err && err.message) || err), true);
+  });
+})();
+</script>
+</body>
+</html>

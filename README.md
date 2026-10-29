@@ -6,7 +6,7 @@
 | 项目 | 值 |
 |---|---|
 | 插件 ID | `todo-reminder` |
-| 当前版本 | 1.0.2 |
+| 当前版本 | 1.0.3 |
 | 最低宿主版本 | 0.29.3（Windows 11 实测） |
 | SDK 契约 | `apiVersion: 1` |
 | Node 内建模块 | **不使用**（`nodeAccess: false`） |
@@ -41,7 +41,10 @@
 - **逾期催办**：提醒后仍未完成的，每 10 分钟催一次，最多 3 次；之后不再打扰，只靠徽标红档 + 面板红底提示。
 - **停机补账**：宿主重启后首轮巡检会把「已逾期但还没提醒过」的旧账立即补上。
 - **早间播报**：每天 09:00 播报今天到期数与逾期数。
-- **跨插件广播**：提醒发生时还会广播 `todo-reminder:remind` 事件（载荷 `{items:[{text,due}], overdue}`）。
+- **跨插件广播（提醒）**：提醒发生时广播 `todo-reminder:remind` 事件（载荷 `{items:[{text,due}], overdue}`）。
+- **跨插件广播（完成）**：一条待办被标记完成时广播 `todo-reminder:completed` 事件
+  （载荷 `{id, text, doneAt}`）。其它插件可监听它在自己的记录里留下一条完成痕迹——
+  例如游戏类插件据此发放奖励。本插件不依赖任何监听方，无人接收也不影响提醒主流程。
   其它对话型插件可自行监听并写入各自的对话记录；本插件不依赖任何监听方，无人接收也不影响冒泡提醒。
 
 ## 申请的权限（7 项）
@@ -51,7 +54,7 @@
 | `storage` | 待办数据存在插件私有存储（`%APPDATA%\desktop-pet-shell\plugins\todo-reminder\data.json`），卸载插件即随之删除 |
 | `pet` | 到点时让桌宠冒泡、播放动作，并设置宠物脚下的状态徽标 |
 | `ui` | 打开与关闭插件面板（徽标点击时 `onClick: 'openPanel'`） |
-| `events` | 面板/卡片与常驻层之间同步数据变更；对外广播 `todo-reminder:remind` |
+| `events` | 面板/卡片与常驻层之间同步数据变更；对外广播 `todo-reminder:remind` 与 `todo-reminder:completed` |
 | `scheduler` | 每 30 秒巡检到期、每 10 分钟催办、每天 09:00 早间播报 |
 | `tools` | 向宿主 Agent 注册 5 个待办管理工具 |
 | `dashboard` | 在看板挂载本插件的卡片区块 |
@@ -91,7 +94,7 @@ node scripts/build.js
 node scripts/build.js --check-only
 
 # 校验标签与 manifest.version 一致（CI 发布前用）
-node scripts/build.js --check-only --check-tag v1.0.2
+node scripts/build.js --check-only --check-tag v1.0.3
 ```
 
 `scripts/build.js` 在打包前会强制检查：

@@ -34,11 +34,27 @@ const MESSAGE = process.argv[5] || 'feat: publish plugin';
 
 const API = 'https://api.github.com';
 
-/** 用 curl 发请求：Node 的 https 在本机被重置，curl 才稳 */
+/**
+ * 用 curl 发请求：Node 的 https 在本机被重置，curl 才稳。
+ *
+ * 网络策略（实测）：
+ *   api.github.com 直连（--noproxy '*'）通常可用，但偶发 21s 超时；
+ *   走本机 http_proxy 也可用。两种路径都可能抖动 → 直连失败自动回退走代理。
+ *   请求体走临时文件传给 curl（-d @file）：Windows 命令行 32K 上限，
+ *   大文件 base64 后拼进命令行会 ENAMETOOLONG。
+ */
+function curlOnce(args, useProxy) {
+  const full = useProxy
+    ? args.map((a) => (a === '--noproxy' ? '--proxy' : (a === '*' ? '' : a)))
+        .filter((a) => a !== '')
+    : args;
+  return execFileSync('curl', full, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+}
+
 function request(method, apiPath, body) {
   const tmp = path.join(require('os').tmpdir(), 'gh-resp-' + process.pid + '-' + Date.now() + '.json');
-  const args = [
-    '-sS', '--noproxy', '*', '--max-time', '60',
+  const base = [
+    '-sS', '--noproxy', '*', '--max-time', '45',
     '-o', tmp,
     '-X', method,
     '-H', `Authorization: Bearer ${TOKEN}`,
@@ -47,11 +63,34 @@ function request(method, apiPath, body) {
     '-H', 'User-Agent: pet-plugin-publisher',
     '-H', 'Content-Type: application/json'
   ];
-  if (body !== undefined) args.push('-d', JSON.stringify(body));
-  args.push(API + apiPath);
+  let bodyFile = null;
+  if (body !== undefined) {
+    bodyFile = path.join(require('os').tmpdir(), 'gh-req-' + process.pid + '-' + Date.now() + '.json');
+    fs.writeFileSync(bodyFile, JSON.stringify(body));
+    base.push('-d', '@' + bodyFile);
+  }
+  base.push(API + apiPath);
 
   try {
-    execFileSync('curl', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    let lastErr = null;
+    // 先直连，失败再走代理（各重试 2 次）
+    for (const useProxy of [false, true]) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          curlOnce(base, useProxy);
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!lastErr) break;
+    }
+    if (lastErr) {
+      const msg = String(lastErr.stderr || lastErr.message || lastErr);
+      throw new Error(msg.split('\n')[0]);
+    }
+
     const out = fs.readFileSync(tmp, 'utf8');
     let json = null;
     try { json = JSON.parse(out); } catch (e) { /* 非 JSON 响应 */ }
@@ -61,14 +100,15 @@ function request(method, apiPath, body) {
     return json || {};
   } finally {
     try { fs.unlinkSync(tmp); } catch (e) { /* 忽略 */ }
+    if (bodyFile) { try { fs.unlinkSync(bodyFile); } catch (e) { /* 忽略 */ } }
   }
 }
 
-/** 判断 HTTP 状态（用于区分 404 与其他错误） */
+/** 判断 HTTP 状态（用于区分 404 与其他错误），同样带直连/代理回退 */
 function requestStatus(apiPath) {
   const tmp = path.join(require('os').tmpdir(), 'gh-status-' + process.pid + '.txt');
-  const args = [
-    '-sS', '--noproxy', '*', '--max-time', '60',
+  const base = [
+    '-sS', '--noproxy', '*', '--max-time', '45',
     '-o', tmp, '-w', '%{http_code}',
     '-H', `Authorization: Bearer ${TOKEN}`,
     '-H', 'Accept: application/vnd.github+json',
@@ -76,7 +116,21 @@ function requestStatus(apiPath) {
     API + apiPath
   ];
   try {
-    return execFileSync('curl', args, { encoding: 'utf8' }).trim();
+    let lastErr = null;
+    for (const useProxy of [false, true]) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const code = curlOnce(base, useProxy).trim();
+          lastErr = null;
+          return code;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!lastErr) break;
+    }
+    if (lastErr) throw lastErr;
+    return '000';
   } finally {
     try { fs.unlinkSync(tmp); } catch (e) { /* 忽略 */ }
   }
@@ -99,7 +153,7 @@ function collect(dir, prefix = '') {
   const files = collect(DIR);
   console.log(`待推送 ${files.length} 个文件（已排除 .git / dist / node_modules）`);
 
-  // 1) blob
+  // 1) blob（base64 后走请求体文件，避免命令行长度上限）
   const entries = [];
   let n = 0;
   for (const f of files) {
