@@ -1,0 +1,38 @@
+{
+  "id": "todo-reminder",
+  "name": "到点提醒",
+  "description": "待办清单 + 到点提醒：到时间桌宠会冒泡、做动作、刷徽标，支持推迟、逾期催办与看板卡片。",
+  "version": "1.0.2",
+  "apiVersion": 1,
+  "author": "github:fengxi1998",
+  "homepage": "https://github.com/fengxi1998/pet-plugin-todo-reminder",
+  "nodeAccess": false,
+  "updateReminders": false,
+  "minHostVersion": "0.29.3",
+  "kind": [
+    "tool",
+    "panel",
+    "dashboard-card"
+  ],
+  "permissions": [
+    "storage",
+    "pet",
+    "ui",
+    "events",
+    "scheduler",
+    "tools",
+    "dashboard"
+  ],
+  "entry": {
+    "tool": "tool/index.js",
+    "panel": {
+      "src": "panel/panel.html",
+      "width": 460,
+      "height": 560,
+      "title": "到点提醒"
+    },
+    "dashboardBlock": {
+      "src": "card/card.html"
+    }
+  }
+}
