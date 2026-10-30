@@ -6,7 +6,7 @@
 | 项目 | 值 |
 |---|---|
 | 插件 ID | `todo-reminder` |
-| 当前版本 | 1.0.3 |
+| 当前版本 | 1.0.4 |
 | 最低宿主版本 | 0.29.3（Windows 11 实测） |
 | SDK 契约 | `apiVersion: 1` |
 | Node 内建模块 | **不使用**（`nodeAccess: false`） |
@@ -24,6 +24,10 @@
 
 ### tool 注册的 5 个工具（宿主 Agent 可直接调用）
 
+参数声明放在 `schema.parameters`（宿主 Agent 适配层从该字段读取入参 JSON Schema，
+`schema.description` 作为工具描述）；5 个工具必填项：`reminder_add` 必填 `text`，
+`reminder_done` / `reminder_delete` / `reminder_snooze` 必填 `target`，`reminder_list` 无必填。
+
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `reminder_add` | `text`、`due?` | 添加待办；`due` 可传 `2026-10-30T18:00:00+08:00` 或 `2026-10-30 18:00` |
@@ -31,6 +35,13 @@
 | `reminder_done` | `target`（id 或内容关键字） | 标记完成 |
 | `reminder_delete` | `target` | 删除 |
 | `reminder_snooze` | `target`、`minutes?` | 推迟 N 分钟（默认 5），并重新武装提醒 |
+
+### 容量上限（200 条）
+
+待办上限 **200 条**，工具、面板、看板卡片三侧一致：
+
+- 已满时再新增会被**明确拒绝**（工具返回 `ok:false` 与原因；面板 toast 提示；卡片弹宿主对话框），不做静默截断。
+- 历史数据若已超限（旧版本写入），原样保留，完成/删除照常可用，靠删除自然回落到上限内。
 
 ### 提醒机制
 
@@ -42,10 +53,11 @@
 - **停机补账**：宿主重启后首轮巡检会把「已逾期但还没提醒过」的旧账立即补上。
 - **早间播报**：每天 09:00 播报今天到期数与逾期数。
 - **跨插件广播（提醒）**：提醒发生时广播 `todo-reminder:remind` 事件（载荷 `{items:[{text,due}], overdue}`）。
-- **跨插件广播（完成）**：一条待办被标记完成时广播 `todo-reminder:completed` 事件
-  （载荷 `{id, text, doneAt}`）。其它插件可监听它在自己的记录里留下一条完成痕迹——
-  例如游戏类插件据此发放奖励。本插件不依赖任何监听方，无人接收也不影响提醒主流程。
-  其它对话型插件可自行监听并写入各自的对话记录；本插件不依赖任何监听方，无人接收也不影响冒泡提醒。
+  其它对话型插件可自行监听并写入各自的对话记录。
+- **跨插件广播（完成）**：一条待办被标记完成时广播一次 `todo-reminder:completed` 事件
+  （载荷 `{id, text, doneAt}`）——工具 `reminder_done` 与面板勾选两条路径都会广播，
+  取消完成不广播，同一次完成只发一次。其它插件（如游戏类）可据此发放联动奖励；
+  本插件不依赖任何监听方，无人接收也不影响提醒主流程。
 
 ## 申请的权限（7 项）
 
@@ -94,7 +106,7 @@ node scripts/build.js
 node scripts/build.js --check-only
 
 # 校验标签与 manifest.version 一致（CI 发布前用）
-node scripts/build.js --check-only --check-tag v1.0.3
+node scripts/build.js --check-only --check-tag v1.0.4
 ```
 
 `scripts/build.js` 在打包前会强制检查：
@@ -112,8 +124,8 @@ ZIP 顶层直接是 `manifest.json`（宿主安装管线的解析要求），文
 | 项目 | 结果 |
 |---|---|
 | 宿主 manifest 校验 | 通过（宿主 `loadManifest` 真实路径） |
-| 工具逻辑测试 | 模拟 SDK 10 项断言通过（提醒触发 / 催办上限 / snooze 重武装 / 关键字定位 / 定时器销毁无泄漏） |
-| 面板与卡片真渲染 | Chromium 实渲染 + 交互 9 项断言通过，零运行时异常 |
+| 工具逻辑测试 | 模拟 SDK 12 项断言通过（宿主参数转换存活 / 提醒触发 / 催办上限 / snooze 重武装 / 关键字定位 / completed 恰好一次且载荷 {id,text,doneAt} / 容量满拒绝且不截断 / 定时器销毁无泄漏） |
+| 面板与卡片真渲染 | Chromium 实渲染 + 交互 12 项断言通过（含面板 completed 广播、面板/卡片满载拒绝路径），零运行时异常 |
 | 停用 / 重启 / 卸载 | 停用清空定时器与徽标；重启后首轮巡检补提醒旧账；卸载移除私有数据 |
 
 ## 已知取舍

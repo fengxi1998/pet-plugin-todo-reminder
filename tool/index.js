@@ -19,6 +19,8 @@ const TODO_KEY = 'todos';
 const CHANGED_EVENT = 'todo-reminder:changed';
 // 跨插件广播：对话型插件（如 dsh-shenshen）监听它，把提醒写进各自的对话记录。
 const REMIND_EVENT = 'todo-reminder:remind';
+// 跨插件广播：一条待办被标记完成时发一次（载荷 {id, text, doneAt}），游戏类插件据此发放联动奖励。
+const COMPLETED_EVENT = 'todo-reminder:completed';
 const MAX_TODOS = 200;
 
 const CHECK_EVERY_MS = 30 * 1000;        // 到点提醒的检测粒度：30 秒
@@ -43,8 +45,10 @@ async function readTodos(pet) {
   return raw.filter((item) => item && typeof item.text === 'string');
 }
 
+// 容量策略：上限 MAX_TODOS 条，在各「新增」入口（工具/面板/卡片）明确拒绝，
+// 这里不做静默截断——历史超限数据也原样保留，靠用户删除自然回落到上限内。
 async function writeTodos(pet, todos) {
-  await pet.storage.set(TODO_KEY, todos.slice(0, MAX_TODOS));
+  await pet.storage.set(TODO_KEY, todos);
 }
 
 function newId() {
@@ -179,13 +183,18 @@ function registerTools(pet) {
   pet.tools.register({
     name: 'reminder_add',
     promptHint: '添加一条待办，可带到期时间。到点后桌宠会主动冒泡提醒。',
+    // 宿主 Agent 适配层读取 schema.parameters 作为入参 JSON Schema（缺省即空参），
+    // schema.description 作为工具描述——参数声明必须放在 parameters 里。
     schema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', description: '待办内容' },
-        due: { type: 'string', description: '可选，到期时间，如 2026-10-30T18:00:00+08:00 或 2026-10-30 18:00' }
-      },
-      required: ['text']
+      description: '添加一条待办，可带到期时间。到点后桌宠会主动冒泡提醒。',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string' },
+          due: { type: 'string' }
+        },
+        required: ['text']
+      }
     },
     async handler(args) {
       const text = String(args.text || '').trim();
@@ -196,6 +205,10 @@ function registerTools(pet) {
       try { due = normalizeDue(args.due); } catch (err) { return { ok: false, error: String(err.message || err) }; }
 
       const todos = await readTodos(pet);
+      if (todos.length >= MAX_TODOS) {
+        // 容量已满：明确拒绝，不静默截断、不返回假成功。
+        return { ok: false, error: '待办已达上限 ' + MAX_TODOS + ' 条，请先完成或删除一些再添加', capacity: MAX_TODOS };
+      }
       todos.push({ id: newId(), text, done: false, due, remindedAt: 0, nagCount: 0, ts: Date.now() });
       await writeTodos(pet, todos);
       await syncBadge(pet);
@@ -213,9 +226,12 @@ function registerTools(pet) {
     name: 'reminder_list',
     promptHint: '查看待办清单。',
     schema: {
-      type: 'object',
-      properties: {
-        onlyPending: { type: 'boolean', description: '为 true 时只返回未完成项' }
+      description: '查看到点提醒的待办清单。',
+      parameters: {
+        type: 'object',
+        properties: {
+          onlyPending: { type: 'boolean' }
+        }
       }
     },
     async handler(args) {
@@ -242,11 +258,14 @@ function registerTools(pet) {
     name: 'reminder_done',
     promptHint: '把一条待办标记为完成。可用 id 或内容关键字定位。',
     schema: {
-      type: 'object',
-      properties: {
-        target: { type: 'string', description: '待办 id 或内容关键字' }
-      },
-      required: ['target']
+      description: '把一条待办标记为完成。',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string' }
+        },
+        required: ['target']
+      }
     },
     async handler(args) {
       const todos = await readTodos(pet);
@@ -257,6 +276,8 @@ function registerTools(pet) {
       await writeTodos(pet, todos);
       await syncBadge(pet);
       await pet.events.emit(CHANGED_EVENT, { scope: 'todo' });
+      // 跨插件契约（载荷 {id, text, doneAt}）：每次完成只广播一次，供游戏类插件发放联动奖励。
+      await pet.events.emit(COMPLETED_EVENT, { id: item.id, text: item.text, doneAt: item.doneAt });
       return { ok: true, text: item.text };
     }
   });
@@ -265,11 +286,14 @@ function registerTools(pet) {
     name: 'reminder_delete',
     promptHint: '删除一条待办（不问完成没完成）。可用 id 或内容关键字定位。',
     schema: {
-      type: 'object',
-      properties: {
-        target: { type: 'string', description: '待办 id 或内容关键字' }
-      },
-      required: ['target']
+      description: '删除一条待办。',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string' }
+        },
+        required: ['target']
+      }
     },
     async handler(args) {
       const todos = await readTodos(pet);
@@ -287,12 +311,15 @@ function registerTools(pet) {
     name: 'reminder_snooze',
     promptHint: '把一条待办推迟：到期时间顺延 N 分钟（默认 5），并重新武装提醒。',
     schema: {
-      type: 'object',
-      properties: {
-        target: { type: 'string', description: '待办 id 或内容关键字' },
-        minutes: { type: 'number', description: '推迟多少分钟，默认 5，上限 7 天' }
-      },
-      required: ['target']
+      description: '把一条待办推迟 N 分钟。',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string' },
+          minutes: { type: 'number' }
+        },
+        required: ['target']
+      }
     },
     async handler(args) {
       const todos = await readTodos(pet);

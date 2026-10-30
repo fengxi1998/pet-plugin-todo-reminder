@@ -13,7 +13,9 @@
  *   3. POST /git/commits 提交（带上一分支的 commit 作 parent，实现快进）
  *   4. PATCH /git/refs/heads/{branch} 推进分支
  *
- * 用法：node scripts/push-via-api.js <仓库目录> <owner/repo> [分支] [提交信息]
+ * 用法：node scripts/push-via-api.js <仓库目录> <owner/repo> [分支] [提交信息] [标签]
+ *   传第 5 个参数（如 v1.0.4）时，推进分支后顺带创建标签引用——
+ *   CI 监听 v* 标签推送，会自动构建并发布 Release 附件（plugin.zip）。
  */
 'use strict';
 
@@ -31,6 +33,7 @@ const DIR = path.resolve(process.argv[2] || '.');
 const REPO = process.argv[3] || 'fengxi1998/pet-plugin-todo-reminder';
 const BRANCH = process.argv[4] || 'main';
 const MESSAGE = process.argv[5] || 'feat: publish plugin';
+const TAG = process.argv[6] || '';   // 可选发布标签，如 v1.0.4
 
 const API = 'https://api.github.com';
 
@@ -202,6 +205,17 @@ function collect(dir, prefix = '') {
     });
   }
   console.log('分支已推进: ' + BRANCH + ' → ' + commit.sha);
+
+  // 5) 可选：创建发布标签（触发 CI 构建并发布 Release 附件）
+  if (TAG) {
+    const tagStatus = requestStatus(`/repos/${REPO}/git/ref/tags/${TAG}`);
+    if (tagStatus === '200') {
+      console.log('标签已存在，跳过: ' + TAG);
+    } else {
+      request('POST', `/repos/${REPO}/git/refs`, { ref: 'refs/tags/' + TAG, sha: commit.sha });
+      console.log('标签已创建: ' + TAG + ' → ' + commit.sha + '（CI 将自动构建发布）');
+    }
+  }
 })().catch((e) => {
   console.error('推送失败: ' + e.message);
   process.exit(1);

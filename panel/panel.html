@@ -306,6 +306,8 @@
 
   var TODO_KEY = 'todos';
   var CHANGED_EVENT = 'todo-reminder:changed';
+  var COMPLETED_EVENT = 'todo-reminder:completed';   // 跨插件契约：完成时广播一次（载荷 {id, text, doneAt}）
+  var MAX_TODOS = 200;                               // 与常驻层同一容量上限：满时明确拒绝，不静默丢数据
 
   var $ = function (id) { return document.getElementById(id); };
   var todos = [];
@@ -423,11 +425,18 @@
       check.title = item.done ? '标记为未完成' : '标记为已完成';
       check.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
       check.addEventListener('click', function () {
+        var wasDone = item.done;
         item.done = !item.done;
         item.doneAt = item.done ? Date.now() : 0;
         if (item.done) { item.remindedAt = Date.now(); item.nagCount = 0; }
         else { item.remindedAt = 0; item.nagCount = 0; }
-        saveTodos();
+        saveTodos().then(function () {
+          if (!wasDone) {
+            // 跨插件契约：面板完成的待办也要广播 completed（与工具 reminder_done 同载荷），
+            // 同一次完成只广播一次；取消完成不广播。
+            return pet.events.emit(COMPLETED_EVENT, { id: item.id, text: item.text, doneAt: item.doneAt }).catch(function () {});
+          }
+        });
       });
 
       var body = document.createElement('div');
@@ -484,6 +493,11 @@
     var input = $('add-input');
     var text = input.value.trim();
     if (!text) return;
+
+    if (todos.length >= MAX_TODOS) {
+      toast('待办已达上限 ' + MAX_TODOS + ' 条，先完成或删除一些再添加', true);
+      return;
+    }
 
     var due = '';
     var dueRaw = $('add-due').value;

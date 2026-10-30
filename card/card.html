@@ -170,6 +170,7 @@
 
   var TODO_KEY = 'todos';
   var CHANGED_EVENT = 'todo-reminder:changed';
+  var MAX_TODOS = 200;   // 与常驻层/面板同一容量上限：满时明确拒绝，不静默丢数据
 
   var $ = function (id) { return document.getElementById(id); };
   var todos = [];
@@ -247,6 +248,18 @@
     var input = $('quick-input');
     var text = input.value.trim();
     if (!text) return;
+    if (todos.length >= MAX_TODOS) {
+      // 容量已满：明确告知（卡片没有 toast，走宿主风格对话框），不写入、不假成功。
+      try {
+        pet.ui.dialog({
+          title: '容量已满',
+          text: '待办已达上限 ' + MAX_TODOS + ' 条，先到面板完成或删除一些再添加。',
+          okLabel: '知道了',
+          cancelLabel: ' '
+        }).catch(function () {});
+      } catch (err) { /* 旧宿主不支持对话框时忽略，数据保持原样 */ }
+      return;
+    }
     todos.push({
       id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       text: text,

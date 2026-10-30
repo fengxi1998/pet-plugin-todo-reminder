@@ -96,7 +96,7 @@ const PERMISSION_USAGE = {
   storage: '待办数据存在插件私有存储（plugins/todo-reminder/data.json），卸载随插件目录一并删除',
   pet: '到点时让桌宠冒泡、播放动作，并设置宠物脚下的状态徽标',
   ui: '打开与关闭插件面板（徽标点击 onClick: openPanel）',
-  events: '面板/卡片与常驻层之间同步数据变更；对外广播 todo-reminder:remind 事件',
+  events: '面板/卡片与常驻层之间同步数据变更；对外广播 todo-reminder:remind 与 todo-reminder:completed 事件',
   scheduler: '每 30 秒巡检到期、每 10 分钟催办、每天 09:00 早间播报',
   tools: '向宿主 Agent 注册 5 个待办管理工具（reminder_add/list/done/delete/snooze）',
   dashboard: '在看板挂载本插件的卡片区块（entry.dashboardBlock）'
@@ -131,6 +131,8 @@ const prBody = [
   '',
   '功能、停用、重启与卸载的验证结果：',
   '- 功能：面板、看板卡片与常驻层（Agent 工具、提醒巡检、徽标）均验证通过。',
+  '- 跨插件契约：提醒时广播 `todo-reminder:remind`，待办完成时广播 `todo-reminder:completed`',
+  '  （载荷 `{id, text, doneAt}`），供其它插件（如游戏类）据此联动。',
   '- 停用：定时器销毁、徽标清空，无泄漏。',
   '- 重启：插件 activate 后恢复正常，重启不丢配置。',
   '- 卸载：插件私有数据随插件目录一并移除。',
